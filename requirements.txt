@@ -1,0 +1,26 @@
+# ToothMatchNet — Python dependencies
+# Tested with Python 3.12 + CUDA 12.8
+
+# ── Core deep learning ──────────────────────────────────────────────────────
+torch>=2.8.0            # PyTorch (install with CUDA 12.8 wheel from pytorch.org)
+torchvision>=0.20.0
+
+# ── Backbone / pretrained weights ───────────────────────────────────────────
+timm>=1.0.3             # ConvNeXt pretrained models
+
+# ── Image processing ────────────────────────────────────────────────────────
+Pillow>=10.0.0
+numpy>=1.26.0
+
+# ── Metrics ─────────────────────────────────────────────────────────────────
+scikit-learn>=1.4.0     # roc_auc_score, average_precision_score
+
+# ── Logging / visualisation ─────────────────────────────────────────────────
+tensorboard>=2.16.0
+
+# ── Utilities ───────────────────────────────────────────────────────────────
+tqdm>=4.66.0
+
+# ── Dev / optional ──────────────────────────────────────────────────────────
+# matplotlib>=3.8.0     # for visualisation scripts
+# pandas>=2.1.0         # for data analysis
