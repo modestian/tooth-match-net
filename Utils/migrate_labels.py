@@ -5,7 +5,7 @@ migrate_labels.py
 
 用法：
     cd ToothMatchNet
-    python migrate_labels.py
+    python Utils/migrate_labels.py
 
 逻辑：
   1. 读取 MatchingData/labels.csv（旧格式）
@@ -20,7 +20,8 @@ migrate_labels.py
 import csv
 from pathlib import Path
 
-BASE      = Path(__file__).parent / "MatchingData"
+# 从 Utils/ 目录向上两级到达项目根目录，再进入 MatchingData
+BASE      = Path(__file__).parent.parent / "MatchingData"
 LABELS_IN = BASE / "labels.csv"
 SPLITS    = ["train", "val", "test"]
 
