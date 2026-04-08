@@ -62,6 +62,8 @@ def get_logger(name: str = "ToothMatchNet",
         return logger
 
     logger.setLevel(level)
+    logger.propagate = False  # 禁用日志传播，避免重复输出
+    
     fmt = logging.Formatter(
         "[%(asctime)s] [%(levelname)s] %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S"

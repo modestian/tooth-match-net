@@ -25,7 +25,9 @@ CHECKPOINT_DIR  = ROOT_DIR / "MatchingCheckpoints"
 # ---------------------------------------------------------------------------
 @dataclass
 class ModelConfig:
-    # ConvNeXt variant: "convnext_small" | "convnext_base" | "convnext_tiny"
+    # Backbone options:
+    # ConvNeXt: "convnext_tiny" | "convnext_small" | "convnext_base" | "convnext_large"
+    # ResNet:   "resnet18" | "resnet34" | "resnet50" | "resnet101"
     backbone: str           = "convnext_small"
 
     # Number of input channels per branch (depth 1ch + normal 3ch = 4ch)
@@ -103,6 +105,11 @@ class TrainConfig:
     seed: int                       = 42
     epochs: int                     = 150
     batch_size: int                 = 16
+    
+    # K-Fold Cross Validation
+    use_kfold: bool                 = False      # 是否启用K-Fold交叉验证
+    k_folds: int                    = 5          # K折数
+    current_fold: int               = 0          # 当前折（0到k_folds-1）
 
     # Optimizer — AdamW with differential LR
     optimizer: str                  = "adamw"

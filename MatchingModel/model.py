@@ -67,6 +67,16 @@ _CONVNEXT_REGISTRY = {
     "convnext_large": (tvm.convnext_large, tvm.ConvNeXt_Large_Weights.DEFAULT, 1536),
 }
 
+_RESNET_REGISTRY = {
+    "resnet18":  (tvm.resnet18,  tvm.ResNet18_Weights.DEFAULT,  512),
+    "resnet34":  (tvm.resnet34,  tvm.ResNet34_Weights.DEFAULT,  512),
+    "resnet50":  (tvm.resnet50,  tvm.ResNet50_Weights.DEFAULT,  2048),
+    "resnet101": (tvm.resnet101, tvm.ResNet101_Weights.DEFAULT, 2048),
+}
+
+# 合并所有支持的backbone
+_BACKBONE_REGISTRY = {**_CONVNEXT_REGISTRY, **_RESNET_REGISTRY}
+
 
 def _make_convnext_encoder(backbone_name: str,
                             in_channels: int,
@@ -90,7 +100,7 @@ def _make_convnext_encoder(backbone_name: str,
     """
     if backbone_name not in _CONVNEXT_REGISTRY:
         raise ValueError(
-            f"Unknown backbone '{backbone_name}'. "
+            f"Unknown ConvNeXt backbone '{backbone_name}'. "
             f"Choose from: {list(_CONVNEXT_REGISTRY.keys())}"
         )
 
@@ -128,6 +138,90 @@ def _make_convnext_encoder(backbone_name: str,
     return features, feat_dim
 
 
+def _make_resnet_encoder(backbone_name: str,
+                          in_channels: int,
+                          pretrained: bool) -> Tuple[nn.Module, int]:
+    """
+    Build a ResNet feature extractor.
+
+    Strategy for in_channels != 3:
+        - Load pretrained 3-ch weights
+        - Replace first Conv2d (conv1) with a new in_channels Conv2d
+        - Initialize new conv1 with KAIMING NORMAL (random, fresh)
+        - Keep all other pretrained weights intact
+
+    Returns:
+        encoder : nn.Module  — [B, in_channels, H, W] → [B, feat_dim, H', W']
+        feat_dim: int
+    """
+    if backbone_name not in _RESNET_REGISTRY:
+        raise ValueError(
+            f"Unknown ResNet backbone '{backbone_name}'. "
+            f"Choose from: {list(_RESNET_REGISTRY.keys())}"
+        )
+
+    factory_fn, weights_enum, feat_dim = _RESNET_REGISTRY[backbone_name]
+
+    weights = weights_enum if pretrained else None
+    full_model = factory_fn(weights=weights)
+
+    # Extract layers before avgpool and fc
+    # ResNet structure: conv1, bn1, relu, maxpool, layer1-4
+    layers = [
+        full_model.conv1,
+        full_model.bn1,
+        full_model.relu,
+        full_model.maxpool,
+        full_model.layer1,
+        full_model.layer2,
+        full_model.layer3,
+        full_model.layer4,
+    ]
+    features = nn.Sequential(*layers)
+
+    if in_channels != 3:
+        # Patch conv1: change input channels
+        old_conv = full_model.conv1
+        new_conv = nn.Conv2d(
+            in_channels,
+            old_conv.out_channels,
+            kernel_size=old_conv.kernel_size,
+            stride=old_conv.stride,
+            padding=old_conv.padding,
+            bias=old_conv.bias is not None,
+        )
+
+        # KAIMING init for new conv1
+        nn.init.kaiming_normal_(new_conv.weight, mode="fan_out", nonlinearity="relu")
+        if new_conv.bias is not None:
+            nn.init.zeros_(new_conv.bias)
+
+        features[0] = new_conv
+
+    return features, feat_dim
+
+
+def _make_encoder(backbone_name: str,
+                   in_channels: int,
+                   pretrained: bool) -> Tuple[nn.Module, int]:
+    """
+    Universal encoder factory supporting both ConvNeXt and ResNet.
+
+    Returns:
+        encoder : nn.Module  — [B, in_channels, H, W] → [B, feat_dim, H', W']
+        feat_dim: int
+    """
+    if backbone_name in _CONVNEXT_REGISTRY:
+        return _make_convnext_encoder(backbone_name, in_channels, pretrained)
+    elif backbone_name in _RESNET_REGISTRY:
+        return _make_resnet_encoder(backbone_name, in_channels, pretrained)
+    else:
+        raise ValueError(
+            f"Unknown backbone '{backbone_name}'. "
+            f"Choose from: {list(_BACKBONE_REGISTRY.keys())}"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Lightweight Adapter: maps 4ch input → 3ch for backbone
 # (Alternative to patching stem — keeps ALL pretrained weights intact)
@@ -162,19 +256,18 @@ class BranchEncoder(nn.Module):
 
     Pipeline: [B, 4, H, W]
         → InputAdapter(4→3)        [B, 3, H, W]
-        → ConvNeXt features        [B, feat_dim, H', W']
+        → Backbone features        [B, feat_dim, H', W']
         → AdaptiveAvgPool2d(1,1)   [B, feat_dim, 1, 1]  (if pool=True)
+    
+    Supports both ConvNeXt and ResNet backbones.
     """
     def __init__(self, backbone_name: str, pretrained: bool, pool: bool = False):
         super().__init__()
+        self.backbone_name = backbone_name
         self.adapter  = InputAdapter(in_channels=4, out_channels=3)
 
-        factory_fn, weights_enum, feat_dim = _CONVNEXT_REGISTRY[backbone_name]
-        weights    = weights_enum if pretrained else None
-        full_model = factory_fn(weights=weights)
-
-        self.backbone = full_model.features   # keeps ALL pretrained weights
-        self.feat_dim = feat_dim
+        # Use universal encoder factory
+        self.backbone, self.feat_dim = _make_encoder(backbone_name, in_channels=3, pretrained=pretrained)
         self.pool     = nn.AdaptiveAvgPool2d(1) if pool else None
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -407,11 +500,11 @@ class ToothMatchNet(nn.Module):
                  **kwargs):
         super().__init__()
 
-        if backbone not in _CONVNEXT_REGISTRY:
+        if backbone not in _BACKBONE_REGISTRY:
             raise ValueError(f"Unknown backbone '{backbone}'. "
-                             f"Choose from: {list(_CONVNEXT_REGISTRY.keys())}")
+                             f"Choose from: {list(_BACKBONE_REGISTRY.keys())}")
 
-        _, _, feat_dim = _CONVNEXT_REGISTRY[backbone]
+        _, _, feat_dim = _BACKBONE_REGISTRY[backbone]
 
         # SEPARATE encoders for each branch (key design decision)
         self.tooth_encoder = BranchEncoder(backbone, pretrained, pool=False)

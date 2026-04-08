@@ -213,8 +213,8 @@ def predict_single(model: torch.nn.Module,
     paths = {k: _find_file_by_suffix(sample_dir, sfx) for k, sfx in sfxs.items()}
 
     # Load
-    tooth_img = load_branch(paths["tooth_depth"], paths["tooth_normal"], image_size)
-    eden_img  = load_branch(paths["eden_depth"],  paths["eden_normal"],  image_size)
+    tooth_img, _ = load_branch(paths["tooth_depth"], paths["tooth_normal"], image_size)
+    eden_img, _  = load_branch(paths["eden_depth"],  paths["eden_normal"],  image_size)
 
     # Normalise
     tooth_img = normalizer(tooth_img)
@@ -310,8 +310,8 @@ def predict_batch(model: torch.nn.Module,
             logger.warning(f"  Skipping {sid}: missing {missing} in {sample_dir}")
             continue
 
-        tooth_img = load_branch(paths["tooth_depth"], paths["tooth_normal"], image_size)
-        eden_img  = load_branch(paths["eden_depth"],  paths["eden_normal"],  image_size)
+        tooth_img, _ = load_branch(paths["tooth_depth"], paths["tooth_normal"], image_size)
+        eden_img, _  = load_branch(paths["eden_depth"],  paths["eden_normal"],  image_size)
         tooth_img = normalizer(tooth_img).unsqueeze(0).to(device)
         eden_img  = normalizer(eden_img).unsqueeze(0).to(device)
 
